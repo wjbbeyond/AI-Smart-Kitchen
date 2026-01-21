@@ -1,0 +1,8 @@
+{
+  "name": "AI Smart Kitchen",
+  "description": "An intelligent recipe assistant that analyzes photos of ingredients to suggest personalized meals and cooking instructions.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
