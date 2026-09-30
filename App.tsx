@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { ChefHat, Sparkles, UtensilsCrossed, AlertCircle, ShoppingBasket, Search, Globe } from 'lucide-react';
 import { ImageUpload } from './components/ImageUpload';
 import { Button } from './components/Button';
@@ -8,6 +8,8 @@ import { AppState, GenerationResponse, AppMode, Language } from './types';
 import { translations } from './translations';
 
 function App() {
+  const [apiKey, setApiKey] = useState('');
+  const inFlight = useRef(false);
   const [image, setImage] = useState<string | null>(null);
   const [userPrompt, setUserPrompt] = useState('');
   const [mode, setMode] = useState<AppMode>('ingredients');
@@ -19,22 +21,24 @@ function App() {
   const t = translations[language];
 
   const handleGenerate = async () => {
-    if (!image) return;
+    if (!image || inFlight.current) return;
+    inFlight.current = true;
 
     setAppState(AppState.ANALYZING);
     setError(null);
 
     try {
-      const data = await generateRecipes(image, userPrompt, mode, language);
+      const data = await generateRecipes(image, userPrompt, mode, language, apiKey);
       setResult(data);
       setAppState(AppState.SUCCESS);
     } catch (err) {
       setError(t.error.generic);
       setAppState(AppState.ERROR);
-    }
+    } finally { inFlight.current = false; }
   };
 
   const reset = () => {
+    if (inFlight.current) return;
     setImage(null);
     setUserPrompt('');
     setResult(null);
@@ -86,6 +90,11 @@ function App() {
       </header>
 
       <main className="max-w-3xl mx-auto px-4 py-8">
+        <label className="block mb-4 text-sm">{language === 'zh' ? '个人 Google API Key（仅本页内存保存）' : 'Personal Google API key (memory only)'}
+          <input type="password" aria-label="Google API Key" autoComplete="off" value={apiKey} disabled={appState === AppState.ANALYZING}
+            onChange={event => setApiKey(event.target.value)} className="block w-full border rounded-lg p-2 mt-1" />
+        </label>
+        <p className="text-xs text-slate-500 mb-4">{language === 'zh' ? '图片和偏好将发送至 Google AI。刷新会清除密钥；页面脚本仍可访问它。请勿输入共享服务密钥。' : 'Images and preferences are sent to Google AI. Refresh clears the key; page scripts can still access it. Do not use a shared service key.'}</p>
         
         {/* Intro Section - Only show when IDLE */}
         {appState === AppState.IDLE && !image && (
@@ -166,7 +175,7 @@ function App() {
                   onClick={handleGenerate} 
                   isLoading={appState === AppState.ANALYZING}
                   loadingText={t.buttons.processing}
-                  disabled={!image}
+                  disabled={!image || !apiKey.trim()}
                   className="w-full md:w-auto"
                   variant={mode === 'ingredients' ? 'primary' : 'secondary'}
                 >

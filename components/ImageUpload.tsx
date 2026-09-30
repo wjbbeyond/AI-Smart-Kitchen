@@ -11,9 +11,9 @@ interface ImageUploadProps {
   readyText?: string;
 }
 
-export const ImageUpload: React.FC<ImageUploadProps> = ({ 
-  onImageSelected, 
-  selectedImage, 
+export const ImageUpload: React.FC<ImageUploadProps> = ({
+  onImageSelected,
+  selectedImage,
   onClear,
   title = "Take a photo or upload image",
   subtitle = "Click to browse or drag and drop your image here.",
@@ -29,11 +29,22 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
   };
 
   const processFile = (file: File) => {
-    if (!file.type.startsWith('image/')) return;
-    
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
+      alert('请选择 5 MB 以内的 JPEG、PNG 或 WebP 图片。'); return;
+    }
+
     const reader = new FileReader();
-    reader.onloadend = () => {
-      onImageSelected(reader.result as string);
+    reader.onerror = () => alert('图片读取失败，请重试。');
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') return;
+      const data = reader.result;
+      const image = new Image();
+      image.onload = () => {
+        if (image.width * image.height > 20000000) { alert('图片尺寸过大（最多 20 MP）。'); return; }
+        onImageSelected(data);
+      };
+      image.onerror = () => alert('图片已损坏或格式不受支持。');
+      image.src = data;
     };
     reader.readAsDataURL(file);
   };
@@ -48,12 +59,12 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
   if (selectedImage) {
     return (
       <div className="relative w-full h-64 md:h-80 rounded-2xl overflow-hidden shadow-md border border-slate-200 bg-slate-100 group">
-        <img 
-          src={selectedImage} 
-          alt="Selected content" 
+        <img
+          src={selectedImage}
+          alt="Selected content"
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
         />
-        <button 
+        <button
           onClick={onClear}
           className="absolute top-4 right-4 bg-white/90 text-slate-700 p-2 rounded-full hover:bg-red-50 hover:text-red-600 transition-colors shadow-sm"
         >
@@ -67,7 +78,7 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
   }
 
   return (
-    <div 
+    <div
       className={`relative w-full h-64 md:h-80 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center transition-all duration-300 cursor-pointer overflow-hidden
         ${isDragging ? 'border-emerald-500 bg-emerald-50' : 'border-slate-300 bg-slate-50 hover:border-emerald-400 hover:bg-white'}
       `}
@@ -76,14 +87,14 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
       onDrop={handleDrop}
       onClick={() => fileInputRef.current?.click()}
     >
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        onChange={handleFileChange} 
-        accept="image/*" 
-        className="hidden" 
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileChange}
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
       />
-      
+
       <div className="bg-emerald-100 p-4 rounded-full mb-4 text-emerald-600">
         <Camera size={32} />
       </div>
@@ -93,7 +104,7 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
       <p className="text-slate-500 text-sm text-center max-w-xs px-4">
         {subtitle}
       </p>
-      
+
       <div className="absolute bottom-0 w-full h-1 bg-gradient-to-r from-emerald-400 to-teal-500 opacity-0 transition-opacity duration-300" style={{ opacity: isDragging ? 1 : 0 }} />
     </div>
   );
