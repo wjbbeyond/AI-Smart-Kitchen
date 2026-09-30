@@ -42,7 +42,7 @@ const recipeSchema: Schema = {
           },
           chefTips: { type: Type.STRING, description: "A pro tip for this specific dish." },
         },
-        required: ["title", "ingredients", "steps", "cookingTime", "difficulty"],
+        required: ["title", "description", "calories", "chefTips", "ingredients", "steps", "cookingTime", "difficulty"],
       },
     },
   },
@@ -53,27 +53,29 @@ export const generateRecipes = async (
   base64Image: string,
   userPreference: string,
   mode: AppMode,
-  language: Language
+  language: Language,
+  apiKey: string
 ): Promise<GenerationResponse> => {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    
-    // Clean base64 string if it contains metadata header
-    const cleanBase64 = base64Image.replace(/^data:image\/(png|jpg|jpeg|webp);base64,/, "");
+    if (!apiKey.trim()) throw new Error('Enter your personal Google API key');
+    if (userPreference.length > 4000) throw new Error('Preferences are too long');
+    const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
 
-    const langInstruction = language === 'zh' 
-      ? "IMPORTANT: You MUST output all text in Simplified Chinese (简体中文)." 
+    const image = parseImage(base64Image);
+
+    const langInstruction = language === 'zh'
+      ? "IMPORTANT: You MUST output all text in Simplified Chinese (简体中文)."
       : "IMPORTANT: You MUST output all text in English.";
 
     let prompt = "";
 
     if (mode === 'ingredients') {
       prompt = `
-        You are a world-class chef assistant. 
+        You are a world-class chef assistant.
         1. Analyze the attached image to identify the raw ingredients (vegetables, meats, etc.).
         2. Consider the user's specific request/preferences: "${userPreference || "Suggest something delicious"}".
-        3. Generate tailored recipes that use the identified ingredients. 
-        If the user asks for multiple dishes (e.g., "3 dishes"), provide that many. 
+        3. Generate tailored recipes that use the identified ingredients.
+        If the user asks for multiple dishes (e.g., "3 dishes"), provide that many.
         Ensure the recipes are practical and appetizing.
         ${langInstruction}
       `;
@@ -90,13 +92,13 @@ export const generateRecipes = async (
     }
 
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview", 
+      model: "gemini-3-flash-preview",
       contents: {
         parts: [
           {
             inlineData: {
-              mimeType: "image/jpeg", 
-              data: cleanBase64,
+              mimeType: image.mimeType,
+              data: image.data,
             },
           },
           {
@@ -112,12 +114,30 @@ export const generateRecipes = async (
     });
 
     if (response.text) {
-      return JSON.parse(response.text) as GenerationResponse;
+      return validateRecipes(JSON.parse(response.text));
     } else {
       throw new Error("No response text generated");
     }
   } catch (error) {
-    console.error("Gemini API Error:", error);
-    throw error;
+    throw new Error('Recipe generation failed. Check your image, key and connection, then retry.');
   }
 };
+export function parseImage(value: string) {
+  const match = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
+  if (!match || match[2].length > 7 * 1024 * 1024) throw new Error('Use a JPEG, PNG or WebP under 5 MB');
+  return { mimeType: match[1], data: match[2] };
+}
+
+export function validateRecipes(value: any): GenerationResponse {
+  const text = (v: unknown) => typeof v === 'string' && v.length <= 10000;
+  if (!value || !text(value.analysis) || !Array.isArray(value.recipes) || !value.recipes.length || value.recipes.length > 10 ||
+      value.recipes.some((r: any) => !r || !text(r.title) || !text(r.description) || !text(r.cookingTime) ||
+        !text(r.calories) || !text(r.chefTips) || !['Easy','Medium','Hard'].includes(r.difficulty) ||
+        !Array.isArray(r.ingredients) || !r.ingredients.length || r.ingredients.length > 100 ||
+        r.ingredients.some((i: any) => !i || !text(i.name) || !text(i.amount)) ||
+        !Array.isArray(r.steps) || !r.steps.length || r.steps.length > 100 ||
+        r.steps.some((s: any) => !s || !Number.isInteger(s.stepNumber) || s.stepNumber < 1 || !text(s.instruction)))) {
+    throw new Error('Invalid recipe response');
+  }
+  return value;
+}
